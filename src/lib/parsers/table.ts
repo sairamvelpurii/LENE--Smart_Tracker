@@ -52,6 +52,15 @@ function parseDate(v: unknown): string | null {
     const dt = new Date(yy, mm - 1, dd);
     if (!Number.isNaN(dt.getTime())) return dt.toISOString().slice(0, 10);
   }
+  const ddmmyy = s.match(/^(\d{2})(\d{2})(\d{2,4})$/);
+  if (ddmmyy) {
+    const dd = parseInt(ddmmyy[1]!, 10);
+    const mm = parseInt(ddmmyy[2]!, 10);
+    let yy = parseInt(ddmmyy[3]!, 10);
+    if (yy < 100) yy += 2000;
+    const dt = new Date(yy, mm - 1, dd);
+    if (!Number.isNaN(dt.getTime())) return dt.toISOString().slice(0, 10);
+  }
   const dmy2 = s.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
   if (dmy2) {
     const yy = parseInt(dmy2[1]!, 10);

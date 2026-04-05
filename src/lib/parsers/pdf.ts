@@ -122,11 +122,14 @@ function amountHitsFromText(rest: string): AmountHit[] {
 }
 
 function tryParseLine(line: string): Record<string, unknown> | null {
-  const dateMatch = line.match(/\b(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\b/);
+  const dateMatch = line.match(
+    /\b(?:(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})|(\d{2})(\d{2})(\d{2,4}))\b/,
+  );
   if (!dateMatch) return null;
-  const dd = parseInt(dateMatch[1]!, 10);
-  const mm = parseInt(dateMatch[2]!, 10);
-  let yy = parseInt(dateMatch[3]!, 10);
+  const dd = parseInt(dateMatch[1] ?? dateMatch[4] ?? "", 10);
+  const mm = parseInt(dateMatch[2] ?? dateMatch[5] ?? "", 10);
+  let yy = parseInt(dateMatch[3] ?? dateMatch[6] ?? "", 10);
+  if (!Number.isFinite(dd) || !Number.isFinite(mm) || !Number.isFinite(yy)) return null;
   if (yy < 100) yy += 2000;
   const d = new Date(yy, mm - 1, dd);
   if (Number.isNaN(d.getTime())) return null;
