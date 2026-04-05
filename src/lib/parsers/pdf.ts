@@ -81,12 +81,55 @@ function linesFromText(text: string): string[] {
     .filter(Boolean);
 }
 
+type AmountHit = {
+  amount: number;
+  raw: string;
+  markerType: "income" | "expense" | null;
+  hasSignal: boolean;
+};
+
+function markerToType(marker: string): "income" | "expense" | null {
+  const m = marker.toLowerCase();
+  if (/\b(cr|credit)\b/.test(m)) return "income";
+  if (/\b(dr|debit)\b/.test(m)) return "expense";
+  if (m.includes("+")) return "income";
+  if (m.includes("-")) return "expense";
+  return null;
+}
+
+function amountHitsFromText(rest: string): AmountHit[] {
+  const hits: AmountHit[] = [];
+  const re =
+    /([+-])?\s*(₹|Rs\.?|INR)?\s*(\(?\d[\d,]*(?:\.\d{1,2})?\)?)\s*(dr|cr|debit|credit)?/gi;
+
+  for (const m of rest.matchAll(re)) {
+    const amountStr = m[3]?.trim();
+    if (!amountStr) continue;
+    const amount = parseINRAmountString(amountStr);
+    if (amount === null || amount <= 0) continue;
+
+    const sign = m[1] ?? "";
+    const currency = m[2] ?? "";
+    const suffix = m[4] ?? "";
+    hits.push({
+      amount,
+      raw: m[0]?.trim() ?? amountStr,
+      markerType: markerToType(`${sign} ${suffix}`),
+      hasSignal: Boolean(sign || currency || suffix),
+    });
+  }
+  return hits;
+}
+
 function tryParseLine(line: string): Record<string, unknown> | null {
-  const dateMatch = line.match(/\b(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\b/);
+  const dateMatch = line.match(
+    /\b(?:(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})|(\d{2})(\d{2})(\d{2,4}))\b/,
+  );
   if (!dateMatch) return null;
-  const dd = parseInt(dateMatch[1]!, 10);
-  const mm = parseInt(dateMatch[2]!, 10);
-  let yy = parseInt(dateMatch[3]!, 10);
+  const dd = parseInt(dateMatch[1] ?? dateMatch[4] ?? "", 10);
+  const mm = parseInt(dateMatch[2] ?? dateMatch[5] ?? "", 10);
+  let yy = parseInt(dateMatch[3] ?? dateMatch[6] ?? "", 10);
+  if (!Number.isFinite(dd) || !Number.isFinite(mm) || !Number.isFinite(yy)) return null;
   if (yy < 100) yy += 2000;
   const d = new Date(yy, mm - 1, dd);
   if (Number.isNaN(d.getTime())) return null;
@@ -94,31 +137,38 @@ function tryParseLine(line: string): Record<string, unknown> | null {
 
   const dIdx = line.indexOf(dateMatch[0]!);
   const rest = dIdx >= 0 ? line.slice(dIdx + dateMatch[0]!.length) : line;
-  const inrMatch = rest.match(
-    /(?:₹|Rs\.?|INR)\s*([\d,]+(?:\.\d{1,2})?)|([\d,]+(?:\.\d{1,2})?)\s*(?:Dr|Cr|DR|CR)?/i,
-  );
-  let amountStr: string | null = null;
-  if (inrMatch) {
-    amountStr = (inrMatch[1] || inrMatch[2] || "").trim();
-  }
-  if (!amountStr) {
-    const nums = rest.match(/[\d,]+(?:\.\d{2})?\b/g);
-    if (nums?.length) amountStr = nums[nums.length - 1]!;
-  }
-  const amount = amountStr ? parseINRAmountString(amountStr) : null;
+  const hits = amountHitsFromText(rest);
+  const signalHits = hits.filter((h) => h.hasSignal || h.markerType !== null);
+  const bestHit =
+    signalHits.length > 0
+      ? signalHits[signalHits.length - 1]!
+      : hits.length >= 2
+        ? hits[hits.length - 2]!
+        : hits.length > 0
+          ? hits[hits.length - 1]!
+        : null;
+  const amount = bestHit?.amount ?? null;
   if (amount === null || amount <= 0) return null;
 
   const typeStr = line.toLowerCase();
+  const markerType = bestHit?.markerType ?? null;
+  const incomeByWords =
+    /\b(cr|credit|salary|interest\s*credited|received|received from|refund|reversal|cash deposit|deposit|by transfer)\b/i.test(
+      typeStr,
+    ) && !/\b(dr|debit|paid|purchase|upi-?sent|withdraw|to transfer)\b/i.test(typeStr);
+  const expenseByWords =
+    /\b(dr|debit|paid|purchase|upi-?sent|withdraw|to transfer|sent)\b/i.test(typeStr);
   const isCredit =
-    /\bcr\b|credit|salary|interest\s*credited|received|deposit/i.test(typeStr) &&
-    !/\b(dr|debit|paid|purchase|upi-?sent)\b/i.test(typeStr);
+    markerType === "income" ||
+    (markerType !== "expense" && incomeByWords && !expenseByWords);
   const debit = isCredit ? 0 : amount;
   const credit = isCredit ? amount : 0;
 
-  const amtMatch = inrMatch;
   const desc = line
     .replace(dateMatch[0], "")
-    .replace(amtMatch?.[0] ?? amountStr ?? "", "")
+    .replace(bestHit?.raw ?? "", "")
+    .replace(/\b(dr|cr|debit|credit)\b/gi, "")
+    .replace(/(?:₹|Rs\.?|INR)/gi, "")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 200);

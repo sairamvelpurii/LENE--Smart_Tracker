@@ -5,6 +5,7 @@ export interface LlmTransactionRow {
   description: string;
   amount: number;
   type: "income" | "expense";
+  category?: string;
 }
 
 const SYSTEM = `You extract individual money movements from Indian bank or credit card statement text (HDFC, SBI, ICICI, Axis, Kotak, etc.).
@@ -16,11 +17,15 @@ Each item:
 - amount: ONE positive INR number per row, max 2 decimal places. Typical personal transactions are under ₹10,00,000. NEVER concatenate digits from multiple columns. NEVER use running balance, total, or card number as amount.
 - type: "expense" for money out (debit, UPI paid, purchase, fee, ATM withdrawal, EMI, bill payment)
 - type: "income" for money in (salary credit, interest credited, refund received, cash deposit, NEFT/IMPS received)
+- category: pick ONE from exactly this list:
+  ["Food","Travel","Shopping","Transfers","Bills","Entertainment","Health","Other","Income"]
 
 STRICT rules:
 - Skip: opening/closing balance, available balance, total debits/credits, page headers, IFSC-only lines, statement summary rows.
 - If unsure between balance and transaction amount, SKIP the row.
-- Do not invent amounts; they must appear explicitly in the text for that row.`;
+- Do not invent amounts; they must appear explicitly in the text for that row.
+- Dr/Debit means expense. Cr/Credit means income.
+- Return only valid JSON with top-level key "transactions".`;
 
 export async function extractTransactionsWithOpenAI(
   statementText: string,
@@ -69,6 +74,17 @@ export async function extractTransactionsWithOpenAI(
   if (!Array.isArray(raw)) return [];
 
   const out: LlmTransactionRow[] = [];
+  const allowedCategories = new Set([
+    "Food",
+    "Travel",
+    "Shopping",
+    "Transfers",
+    "Bills",
+    "Entertainment",
+    "Health",
+    "Other",
+    "Income",
+  ]);
   for (const item of raw) {
     if (!item || typeof item !== "object") continue;
     const o = item as Record<string, unknown>;
@@ -76,10 +92,12 @@ export async function extractTransactionsWithOpenAI(
     const description = String(o.description ?? "").trim();
     const amount = Number(o.amount);
     const type = o.type === "income" ? "income" : "expense";
+    const categoryRaw = String(o.category ?? "").trim();
+    const category = allowedCategories.has(categoryRaw) ? categoryRaw : undefined;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
     if (!Number.isFinite(amount) || amount <= 0 || amount > MAX_AMOUNT) continue;
     if (!description) continue;
-    out.push({ date, description: description.slice(0, 500), amount, type });
+    out.push({ date, description: description.slice(0, 500), amount, type, category });
   }
   return out;
 }
