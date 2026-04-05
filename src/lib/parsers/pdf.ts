@@ -142,25 +142,19 @@ function tryParseLine(line: string): Record<string, unknown> | null {
   const bestHit =
     signalHits.length > 0
       ? signalHits[signalHits.length - 1]!
-      : hits.length >= 2
-        ? hits[hits.length - 2]!
-        : hits.length > 0
-          ? hits[hits.length - 1]!
+      : hits.length > 0
+        ? hits[hits.length - 1]!
         : null;
   const amount = bestHit?.amount ?? null;
   if (amount === null || amount <= 0) return null;
 
   const typeStr = line.toLowerCase();
   const markerType = bestHit?.markerType ?? null;
-  const incomeByWords =
-    /\b(cr|credit|salary|interest\s*credited|received|received from|refund|reversal|cash deposit|deposit|by transfer)\b/i.test(
-      typeStr,
-    ) && !/\b(dr|debit|paid|purchase|upi-?sent|withdraw|to transfer)\b/i.test(typeStr);
-  const expenseByWords =
-    /\b(dr|debit|paid|purchase|upi-?sent|withdraw|to transfer|sent)\b/i.test(typeStr);
   const isCredit =
     markerType === "income" ||
-    (markerType !== "expense" && incomeByWords && !expenseByWords);
+    (markerType !== "expense" &&
+      /\bcr\b|credit|salary|interest\s*credited|received|deposit/i.test(typeStr) &&
+      !/\b(dr|debit|paid|purchase|upi-?sent|withdraw)\b/i.test(typeStr));
   const debit = isCredit ? 0 : amount;
   const credit = isCredit ? amount : 0;
 
