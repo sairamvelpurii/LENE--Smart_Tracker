@@ -8,6 +8,7 @@ export interface LlmTransactionRow {
   description: string;
   amount: number;
   type: "income" | "expense";
+  category?: string;
 }
 
 export interface LlmExtractResult {
@@ -15,6 +16,22 @@ export interface LlmExtractResult {
   usedLlm: boolean;
   /** Set when API responded with an error (not 503 no key) */
   apiError?: string;
+}
+
+function normalizeLlmCategory(c: string | undefined, type: "income" | "expense"): string {
+  if (type === "income") return "Income";
+  const raw = (c ?? "").trim().toLowerCase();
+  if (!raw) return "Other";
+  if (raw === "food") return "Food & Dining";
+  if (raw === "travel") return "Transport";
+  if (raw === "shopping") return "Shopping";
+  if (raw === "transfers") return "Transfers & UPI";
+  if (raw === "bills") return "Bills & Utilities";
+  if (raw === "entertainment") return "Entertainment";
+  if (raw === "health") return "Health";
+  if (raw === "income") return "Income";
+  if (raw === "other") return "Other";
+  return "Other";
 }
 
 export function mapLlmRowsToTransactions(
@@ -29,6 +46,7 @@ export function mapLlmRowsToTransactions(
     if (!Number.isFinite(amt) || !isPlausibleTxnAmount(amt)) continue;
     const type = r.type === "income" ? "income" : "expense";
     const desc = (r.description || "Transaction").slice(0, 500);
+    const catFromLlm = normalizeLlmCategory(r.category, type);
     out.push({
       id: createId(),
       userId,
@@ -36,7 +54,7 @@ export function mapLlmRowsToTransactions(
       amount: Math.abs(amt),
       description: desc,
       type,
-      category: type === "income" ? "Income" : inferCategory(desc),
+      category: type === "income" ? "Income" : catFromLlm === "Other" ? inferCategory(desc) : catFromLlm,
       source,
     });
   }
