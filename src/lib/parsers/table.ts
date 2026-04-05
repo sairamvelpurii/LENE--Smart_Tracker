@@ -84,6 +84,26 @@ function inferTypeFromDescription(desc: string): TxType | null {
   return null;
 }
 
+function inferTypeFromAmountCell(raw: unknown): TxType | null {
+  if (typeof raw === "number") {
+    if (raw < 0) return "expense";
+    return null;
+  }
+  const s = String(raw ?? "").toLowerCase();
+  if (!s) return null;
+  if (/\b(cr|credit)\b/.test(s) || /(^|\s)\+\s*(₹|rs\.?|inr|\d)/.test(s)) {
+    return "income";
+  }
+  if (
+    /\b(dr|debit)\b/.test(s) ||
+    /(^|\s)-\s*(₹|rs\.?|inr|\d)/.test(s) ||
+    /^\(\s*(₹|rs\.?|inr)?\s*[\d,]+(?:\.\d{1,2})?\s*\)$/.test(s.trim())
+  ) {
+    return "expense";
+  }
+  return null;
+}
+
 function detectTypeFromRow(
   row: Record<string, unknown>,
   typeKey: string | undefined,
@@ -215,16 +235,9 @@ export function rowsToTransactions(
       const a = parseINRAmount(row[amtKey]);
       if (a !== null && a > 0) {
         const hinted = detectTypeFromRow(row, typeKey, 0, 0);
-        const cell = String(row[amtKey] ?? "").toLowerCase();
-        const typeFromCell =
-          cell.includes("cr") || cell.includes("credit")
-            ? ("income" as const)
-            : cell.includes("dr") || cell.includes("debit")
-              ? ("expense" as const)
-              : null;
+        const typeFromCell = inferTypeFromAmountCell(row[amtKey]);
 
-        let type: TxType =
-          typeFromCell ?? hinted ?? "expense";
+        let type: TxType = typeFromCell ?? hinted ?? "expense";
 
         if (typeKey && !typeFromCell) {
           const t2 = detectTypeFromRow(row, typeKey, debit, credit);
@@ -269,9 +282,9 @@ export function rowsToTransactions(
       if (a !== null && a > 0) {
         amount = a;
         const hinted = detectTypeFromRow(row, typeKey, debit, credit);
+        const typeFromCell = inferTypeFromAmountCell(row[amtKey]);
         const fromDesc = inferTypeFromDescription(desc);
-        type =
-          hinted ?? fromDesc ?? guessTypeFromAmounts(amount, 0);
+        type = typeFromCell ?? hinted ?? fromDesc ?? guessTypeFromAmounts(amount, 0);
       }
     }
 
