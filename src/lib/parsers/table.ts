@@ -52,6 +52,15 @@ function parseDate(v: unknown): string | null {
     const dt = new Date(yy, mm - 1, dd);
     if (!Number.isNaN(dt.getTime())) return dt.toISOString().slice(0, 10);
   }
+  const ddmmyy = s.match(/^(\d{2})(\d{2})(\d{2,4})$/);
+  if (ddmmyy) {
+    const dd = parseInt(ddmmyy[1]!, 10);
+    const mm = parseInt(ddmmyy[2]!, 10);
+    let yy = parseInt(ddmmyy[3]!, 10);
+    if (yy < 100) yy += 2000;
+    const dt = new Date(yy, mm - 1, dd);
+    if (!Number.isNaN(dt.getTime())) return dt.toISOString().slice(0, 10);
+  }
   const dmy2 = s.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
   if (dmy2) {
     const yy = parseInt(dmy2[1]!, 10);
@@ -78,6 +87,26 @@ function inferTypeFromDescription(desc: string): TxType | null {
     /\b(upi[-/]|imps[-/]|purchase|paid\s+to|debited|withdrawal|pos|merchant|swiggy|zomato)\b/.test(
       d,
     )
+  ) {
+    return "expense";
+  }
+  return null;
+}
+
+function inferTypeFromAmountCell(raw: unknown): TxType | null {
+  if (typeof raw === "number") {
+    if (raw < 0) return "expense";
+    return null;
+  }
+  const s = String(raw ?? "").toLowerCase();
+  if (!s) return null;
+  if (/\b(cr|credit)\b/.test(s) || /(^|\s)\+\s*(₹|rs\.?|inr|\d)/.test(s)) {
+    return "income";
+  }
+  if (
+    /\b(dr|debit)\b/.test(s) ||
+    /(^|\s)-\s*(₹|rs\.?|inr|\d)/.test(s) ||
+    /^\(\s*(₹|rs\.?|inr)?\s*[\d,]+(?:\.\d{1,2})?\s*\)$/.test(s.trim())
   ) {
     return "expense";
   }
@@ -215,16 +244,9 @@ export function rowsToTransactions(
       const a = parseINRAmount(row[amtKey]);
       if (a !== null && a > 0) {
         const hinted = detectTypeFromRow(row, typeKey, 0, 0);
-        const cell = String(row[amtKey] ?? "").toLowerCase();
-        const typeFromCell =
-          cell.includes("cr") || cell.includes("credit")
-            ? ("income" as const)
-            : cell.includes("dr") || cell.includes("debit")
-              ? ("expense" as const)
-              : null;
+        const typeFromCell = inferTypeFromAmountCell(row[amtKey]);
 
-        let type: TxType =
-          typeFromCell ?? hinted ?? "expense";
+        let type: TxType = typeFromCell ?? hinted ?? "expense";
 
         if (typeKey && !typeFromCell) {
           const t2 = detectTypeFromRow(row, typeKey, debit, credit);
@@ -269,9 +291,9 @@ export function rowsToTransactions(
       if (a !== null && a > 0) {
         amount = a;
         const hinted = detectTypeFromRow(row, typeKey, debit, credit);
+        const typeFromCell = inferTypeFromAmountCell(row[amtKey]);
         const fromDesc = inferTypeFromDescription(desc);
-        type =
-          hinted ?? fromDesc ?? guessTypeFromAmounts(amount, 0);
+        type = typeFromCell ?? hinted ?? fromDesc ?? guessTypeFromAmounts(amount, 0);
       }
     }
 

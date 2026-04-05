@@ -105,6 +105,11 @@ export function DashboardPage() {
 
   const catData = useMemo(() => aggregateByCategory(pieInput), [pieInput]);
   const pieDisplay = showMoreCats ? catData : catData.slice(0, 6);
+  const pieTotal = useMemo(
+    () => pieDisplay.reduce((sum, c) => sum + c.amount, 0),
+    [pieDisplay],
+  );
+  const topCategory = pieDisplay[0];
   const { income, expense, saved } = useMemo(() => totals(slice), [slice]);
   const lene = useMemo(() => buildLeneSays(slice), [slice]);
   const weekly = useMemo(() => buildWeeklyInsights(slice, bounds), [slice, bounds]);
@@ -246,7 +251,7 @@ export function DashboardPage() {
             <p className="mt-8 text-center text-sm text-slate-500">No expenses in this slice.</p>
           ) : (
             <>
-              <div className="h-56">
+              <div className="h-48">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
@@ -267,8 +272,7 @@ export function DashboardPage() {
               </div>
               <ul className="mt-2 space-y-1">
                 {pieDisplay.map((c, i) => {
-                  const totalCat = pieDisplay.reduce((s, x) => s + x.amount, 0);
-                  const pct = totalCat > 0 ? (c.amount / totalCat) * 100 : 0;
+                  const pct = pieTotal > 0 ? (c.amount / pieTotal) * 100 : 0;
                   return (
                     <li
                       key={c.category}
@@ -297,6 +301,39 @@ export function DashboardPage() {
                   {showMoreCats ? "Show less" : "Show more categories"}
                 </button>
               )}
+              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  Quick actions
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:border-indigo-300 hover:text-indigo-700"
+                    onClick={() => setPieScope("full")}
+                  >
+                    Full period
+                  </button>
+                  {[1, 2, 3, 4].map((w) => (
+                    <button
+                      key={w}
+                      type="button"
+                      className={`rounded-full border px-3 py-1 text-xs font-medium ${
+                        pieScope === w
+                          ? "border-indigo-300 bg-indigo-50 text-indigo-700"
+                          : "border-slate-300 bg-white text-slate-700 hover:border-indigo-300 hover:text-indigo-700"
+                      }`}
+                      onClick={() => setPieScope(w as 1 | 2 | 3 | 4)}
+                    >
+                      Week {w}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-3 text-xs text-slate-600">
+                  {topCategory
+                    ? `Top spend in this view: ${topCategory.category} at ${formatINR(topCategory.amount)} (${pieTotal > 0 ? ((topCategory.amount / pieTotal) * 100).toFixed(0) : 0}%).`
+                    : "Add expense transactions to unlock category insights here."}
+                </p>
+              </div>
             </>
           )}
         </section>
